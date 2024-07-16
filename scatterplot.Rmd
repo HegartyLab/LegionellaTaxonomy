@@ -1,0 +1,261 @@
+---
+title: "ScatterPlot"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+library(ggplot2)
+library(dplyr)
+```
+
+```{r}
+# Scatter plot for Legionella pneumophila
+
+setwd("/Users/pchhyun/Documents/legionella/")
+# Read the data
+data <- read.table("mergedsampleppspecies1.tsv", header = TRUE, sep = "\t")
+
+# Filter out rows with zeros in the count column
+data <- data %>% filter(count != 0)
+
+filtered_data <- data %>%
+  filter(Species == "Legionella pneumophila")
+
+print(filtered_data) 
+
+# Calculate the total sum of counts in the sample
+total_count <- sum(data$count)
+
+# Normalize the count data
+filtered_data$normalized_count <- (filtered_data$count / total_count) * 100
+
+# Plot the normalized data with log scale as scatter plot
+ggplot(filtered_data, aes(x = factor(site_code), y = normalized_count)) +
+  geom_point(alpha = 0.5) +  # Add points
+  scale_y_log10() +  # Set y-axis to log scale
+  labs(x = "Site", y = "Relative Abundance (%)") +
+  ggtitle("Scatter Plot of Normalized Count for Legionella pneumophila")
+
+```
+```{r}
+# scatter plot for longbeachae
+
+setwd("/Users/pchhyun/Documents/legionella/")
+# Read the data
+data <- read.table("mergedsampleppspecies.tsv", header = TRUE, sep = "\t")
+
+# Filter out rows with zeros in the count column
+data <- data %>% filter(count != 0)
+
+filtered_data <- data %>%
+  filter(Species == "Legionella longbeachae")
+
+print(filtered_data)
+
+# Calculate the total sum of counts in the sample
+total_count <- sum(data$count)
+
+# Normalize the count data
+filtered_data$normalized_count <- (filtered_data$count / total_count) * 100
+
+# Plot the normalized data with log scale as scatter plot
+ggplot(filtered_data, aes(x = factor(site_code), y = normalized_count)) +
+  geom_point(alpha = 0.5) +  # Add points with some transparency
+  scale_y_log10() +  # Set y-axis to log scale
+  labs(x = "Site", y = "Relative Abundance (%)") +
+  ggtitle("Scatter Plot of Normalized Count for Legionella longbeachae")
+
+```
+
+
+```{r}
+# scatter plot for anisa
+
+setwd("/Users/pchhyun/Documents/legionella/")
+# Read the data
+data <- read.table("mergedsampleppspecies1.tsv", header = TRUE, sep = "\t")
+
+# Filter out rows with zeros in the count column
+data <- data %>% filter(count != 0)
+
+filtered_data <- data  %>%
+  filter(Species == "Legionella anisa")
+
+print(filtered_data)
+
+# Calculate the total sum of counts in the sample
+total_count <- sum(data$count)
+
+# Normalize the count data
+filtered_data$normalized_count <- (filtered_data$count / total_count) * 100
+
+# Plot the normalized data with log scale as scatter plot
+ggplot(filtered_data, aes(x = factor(site_code), y = normalized_count)) +
+  geom_point(alpha = 0.5) +  # Add points with some transparency
+  scale_y_log10() +  # Set y-axis to log scale
+  labs(x = "Site", y = "Relative Abundance (%)") +
+  ggtitle("Scatter Plot of Normalized Count for Legionella anisa")
+
+```
+
+```{r}
+
+setwd("/Users/pchhyun/Documents/legionella/")
+# Read the data
+data <- read.table("mergedsampleppspecies1.tsv", header = TRUE, sep = "\t")
+
+# Filter out rows with zeros in the count column
+data <- data %>% filter(count != 0)
+
+# Filter for "Legionella pneumophila"
+filtered_data <- data %>%
+  filter(Species == "Legionella pneumophila")
+
+print(filtered_data)
+
+# Calculate the total sum of counts in the sample
+total_count <- sum(data$count)
+
+# Normalize the count data
+filtered_data$normalized_count <- (filtered_data$count / total_count) * 100
+
+# Group by site and calculate mean normalized count
+grouped_data <- filtered_data %>%
+  group_by(site_code) %>%
+  summarise(mean_normalized_count = mean(normalized_count))
+
+print(grouped_data)
+
+# Set the width for the mean segment
+width <- 0.5
+
+# Create scatter plot with mean values
+ggplot(filtered_data, aes(x = factor(site_code), y = normalized_count, color = site_code)) +
+  geom_point(alpha = 1.0 ,size = 2.5, color = "grey") +  
+  stat_summary(
+    fun = "mean", geom = "segment",
+    aes(
+      x = as.numeric(factor(site_code)) - width / 2,
+      xend = as.numeric(factor(site_code)) + width / 2,
+      yend = after_stat(y),
+      group = site_code
+    ),
+    color = "black"
+  ) +
+  scale_y_log10() +  # Set y-axis to log scale
+  labs(x = "Site", y = "Relative Abundance (%)") +
+  ggtitle("Scatter Plot of Normalized Count for Legionella pneumophila") +
+  theme_classic()+
+  theme(legend.position = "none") 
+
+```
+```{r}
+setwd("/Users/pchhyun/Documents/legionella/")
+# Read the data
+data <- read.table("mergedsampleppspecies1.tsv", header = TRUE, sep = "\t")
+
+# Filter out rows with zeros in the count column
+data <- data %>% filter(count != 0)
+
+# Filter for "Legionella longbeachae"
+filtered_data <- data %>%
+  filter(Species == "Legionella longbeachae")
+
+print(filtered_data)
+
+# Calculate the total sum of counts in the sample
+total_count <- sum(data$count)
+
+# Normalize the count data
+filtered_data$normalized_count <- (filtered_data$count / total_count) * 100
+
+# Group by site and calculate mean normalized count
+grouped_data <- filtered_data %>%
+  group_by(site_code) %>%
+  summarise(mean_normalized_count = mean(normalized_count))
+
+print(grouped_data)
+
+# Set the width for the mean segment
+width <- 0.5
+
+# Create scatter plot with mean values
+ggplot(filtered_data, aes(x = factor(site_code), y = normalized_count, color = site_code)) +
+    geom_point(alpha = 1.0 ,size = 2.5, color = "grey") +
+  stat_summary(
+    fun = "mean", geom = "segment",
+    aes(
+      x = as.numeric(factor(site_code)) - width / 2,
+      xend = as.numeric(factor(site_code)) + width / 2,
+      yend = after_stat(y),
+      group = site_code
+    ),
+    color = "black"
+  ) +
+  scale_y_log10() +  # Set y-axis to log scale
+  labs(x = "Site", y = "Relative Abundance (%)") +
+  ggtitle("Scatter Plot of Normalized Count for Legionella longbeachae") +
+  theme_classic()+
+  theme(legend.position = "none") 
+
+```
+```{r}
+setwd("/Users/pchhyun/Documents/legionella/")
+# Read the data
+data <- read.table("mergedsampleppspecies1.tsv", header = TRUE, sep = "\t")
+
+# Filter out rows with zeros in the count column
+data <- data %>% filter(count != 0)
+
+# Filter for "Legionella anisa"
+filtered_data <- data %>%
+  filter(Species == "Legionella anisa")
+
+print(filtered_data)
+
+# Calculate the total sum of counts in the sample
+total_count <- sum(data$count)
+
+# Normalize the count data
+filtered_data$normalized_count <- (filtered_data$count / total_count) * 100
+
+# Group by site and calculate mean normalized count
+grouped_data <- filtered_data %>%
+  group_by(site_code) %>%
+  summarise(mean_normalized_count = mean(normalized_count))
+
+print(grouped_data)
+
+# Set the width for the mean segment
+width <- 0.5
+
+# Create scatter plot with mean values
+ggplot(filtered_data, aes(x = factor(site_code), y = normalized_count, color = site_code)) +
+    geom_point(alpha = 1.0 ,size = 2.5, color = "grey") +  
+  stat_summary(
+    fun = "mean", geom = "segment",
+    aes(
+      x = as.numeric(factor(site_code)) - width / 2,
+      xend = as.numeric(factor(site_code)) + width / 2,
+      yend = after_stat(y),
+      group = site_code
+    ),
+    color = "black"
+  ) +
+  scale_y_log10() +  # Set y-axis to log scale
+  labs(x = "Site", y = "Relative Abundance (%)") +
+  ggtitle("Scatter Plot of Normalized Count for Legionella anisa") +
+  theme_classic()+
+  theme(legend.position = "none") 
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
