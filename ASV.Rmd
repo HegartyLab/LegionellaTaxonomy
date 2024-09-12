@@ -1,0 +1,342 @@
+---
+title: "ASV"
+output: html_notebook
+---
+
+```{r}
+# Load tidyverse package
+library(tidyverse)
+```
+
+```{r} 
+# remove > 
+
+# Set working directory 
+  setwd("/Users/pchhyun/Documents/legionella/")
+
+file2 <- read_tsv("fasta_table.tsv")
+
+# Clean and prepare the second file to match the column 'Seq'
+file2 <- file2 %>%
+   mutate(query = str_remove(query, ">"))
+
+# Write merged data to a new TSV file
+write_tsv(file2, "fasta_table1.tsv")
+
+```
+```{r}
+# full join fasta and blast result
+
+setwd("/Users/pchhyun/Documents/legionella/")
+file1 <- read_tsv("asv16S.tsv")
+
+# Import blast output data
+file2 <- read_tsv("fasta_table1.tsv")
+
+# Join the files based on their taxonomic identifier
+asv16S1 <- full_join( file1, file2, by = "query")
+
+# Export the joined file
+write_tsv(asv16S1, "/Users/pchhyun/Documents/legionella/joined_data.tsv")
+print(asv16S1)
+
+# Write the data to a TSV file
+write.table(asv16S1, file = "asv16S1.tsv", sep = "\t", row.names = FALSE)
+
+```
+
+
+```{r}
+# Join data 
+
+setwd("/Users/pchhyun/Documents/legionella/")
+
+# Import ASVs taxonomy data
+asv_taxonomy <- read_tsv("asv16S1.tsv")
+
+# Import blast output data
+blast_output <- read_tsv("uniqmatches1.tsv")
+
+# Join the files based on their taxonomic identifier 
+joined_data <- full_join(asv_taxonomy, blast_output, by = "subject")
+
+# Export the joined file
+write_tsv(joined_data, "/Users/pchhyun/Documents/legionella/joined_data.tsv")
+print(joined_data)
+```
+
+```{r}
+#read file 
+setwd("/Users/pchhyun/Documents/legionella/")
+joined_data <- read.table("joined_data.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+# how many unique definitions 
+unique_definitions <- unique(joined_data$definition)
+num_unique_definitions <- length(unique_definitions)
+cat("Number of unique definitions:", num_unique_definitions, "\n")
+
+# split taxonomy column into multiple columns
+taxonomy_split <- strsplit(joined_data$taxonomy, ";\\s*", perl = TRUE)
+max_splits <- max(sapply(taxonomy_split, length))
+taxonomy_df <- as.data.frame(do.call(rbind, lapply(taxonomy_split, function(x) c(x, rep(NA, max_splits - length(x))))))
+
+colnames(taxonomy_df) <- c("Domain", "Phylum", "Class", "Order", "Family", "Genus", "Species")
+
+# Extract species information from the taxonomy column
+joined_data$Species <- sub("^(.*?) Bacteria.*$", "\\1", joined_data$taxonomy)
+
+
+# combine the new taxonomy columns with the original data
+processed_data <- cbind(joined_data, taxonomy_df)
+
+
+# substitute everything except "Bacteria" with an empty string in Domain column
+processed_data$Domain <- gsub(".*Bacteria.*", "Bacteria", processed_data$Domain)
+processed_data <- processed_data[, -ncol(processed_data)]
+processed_data <- processed_data %>%
+  select(-Species) %>%
+  mutate(Species = joined_data$Species)
+
+# print the processed_data and write it to a new TSV file
+print(processed_data)
+write.table(processed_data, "/Users/pchhyun/Documents/legionella/processed_data.tsv", sep = "\t", quote = FALSE, row.names = FALSE)
+
+```
+
+```{r}
+# Genus- percent identity greater than 93% - keep; Species- greater than 97%;
+
+# Set working directory to the location of your files
+setwd("/Users/pchhyun/Documents/legionella/")
+
+# Read tsv file 
+data <- read.table("processed_data.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+# Function to modify Genus and Species based on percent.identity
+modify_taxonomy <- function(data) {
+  for (i in seq_len(nrow(data))) {
+    if (!is.na(data[i, "percent.identity"])) {
+      if (as.numeric(data[i, "percent.identity"]) < 93) {
+        # Change Genus to "NA"
+        data[i, "Genus"] <- "NA"
+      }
+      if (as.numeric(data[i, "percent.identity"]) < 97) {
+        # Change Species to "NA"
+        data[i, "Species"] <- "NA"
+      }
+    }
+  }
+  return(data)
+}
+
+# Apply the modification to Genus and Species columns
+modified_data <- modify_taxonomy(data)
+
+# Print the modified data
+print(modified_data)
+
+# Write the modified data back to a new file
+write.table(modified_data, "processed_data11.tsv", sep = "\t", quote = FALSE, row.names = FALSE)
+
+```
+
+
+```{r}
+processed_data <- processed_data %>%
+  group_by(Phylum) %>%
+  mutate(CountPhylum = n()) %>%
+  ungroup() 
+
+print(processed_data)
+
+write_tsv(processed_data, "/Users/pchhyun/Documents/legionella/processed_data1.tsv")
+```
+```{r}
+processed_data <- processed_data %>%
+  group_by(Class) %>%
+  mutate(CountClass = n()) %>%
+  ungroup() 
+
+print(processed_data)
+
+write_tsv(processed_data, "/Users/pchhyun/Documents/legionella/processed_data1.tsv")
+```
+
+```{r}
+processed_data <- processed_data %>%
+  group_by(Order) %>%
+  mutate(CountOrder = n()) %>%
+  ungroup() 
+
+print(processed_data)
+
+write_tsv(processed_data, "/Users/pchhyun/Documents/legionella/processed_data1.tsv")
+
+```
+
+
+```{r}
+processed_data <- processed_data %>%
+  group_by(Family) %>%
+  mutate(CountFamily = n()) %>%
+  ungroup() 
+
+print(processed_data)
+
+write_tsv(processed_data, "/Users/pchhyun/Documents/legionella/processed_data1.tsv")
+```
+
+```{r}
+processed_data <- processed_data %>%
+  group_by(Genus) %>%
+  mutate(CountGenus = n()) %>%
+  ungroup() 
+
+print(processed_data)
+
+write_tsv(processed_data, "/Users/pchhyun/Documents/legionella/processed_data1.tsv")
+```
+```{r}
+processed_data <- processed_data %>%
+  group_by(Species) %>%
+  mutate(CountSpecies = n()) %>%
+  ungroup() 
+
+print(processed_data)
+
+write_tsv(processed_data, "/Users/pchhyun/Documents/legionella/processed_data1.tsv")
+```
+```{r}
+setwd("/Users/pchhyun/Documents/legionella/")
+
+processed_data <- read.table("processed_data.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+legionella_data <- processed_data %>% filter(grepl("Legionella", Genus))
+
+print(legionella_data)
+write_tsv(legionella_data, "/Users/pchhyun/Documents/legionella/legionella_data.tsv")  
+```
+
+
+
+
+
+```{r}
+library(tidyverse)
+
+setwd("/Users/pchhyun/Documents/legionella/")
+
+data <- read.table("processed_data11.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+
+taxonomy_data <- data %>% select(query,subject, Phylum, Class, Order, Family, Genus, Species)
+
+# Rename the query column to Seq#
+taxonomy_data <- rename(taxonomy_data, `Seq` = query)
+
+# Write the new data table as a TSV file
+write.table(taxonomy_data, file = "taxonomy_data1.tsv", sep = "\t", quote = FALSE, row.names = FALSE)
+
+print(taxonomy_data)
+```
+```{r}
+library(tidyverse)
+
+setwd("/Users/pchhyun/Documents/legionella/")
+
+data <- read.table("taxonomy_data1.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+taxonomy_data <- data %>% select(subject,CountPhylum,CountClass, CountOrder,CountFamily,CountGenus, CountSpecies)
+
+# Write the new data table as a TSV file
+write.table(taxonomy_data, file = "count_data.tsv", sep = "\t", quote = FALSE, row.names = FALSE)
+
+print(getwd())
+```
+
+
+```{r}
+library(tidyverse)
+
+setwd("/Users/pchhyun/Documents/legionella/")
+data <- read.table("count_data.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+```
+```{r}
+long_data_c <- data %>%
+  pivot_longer(
+    cols = (CountPhylum:CountSpecies),
+    names_to = "c",
+    values_to = "count"
+  )
+# Print the new taxonomy table
+print(long_data_c)
+
+write.table(long_data_c, file = "c.tsv", sep = "\t", quote = FALSE, row.names = FALSE)
+
+```
+```{r}
+library(tidyverse)
+library(dplyr)
+
+setwd("/Users/pchhyun/Documents/legionella/")
+
+data <- read.table("taxonomy_data1.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+taxonomy_data <- data %>% select(subject, Phylum, Class, Order, Family, Genus, Species)
+
+# Write the new data table as a TSV file
+write.table(taxonomy_data, file = "t_data.tsv", sep = "\t", quote = FALSE, row.names = FALSE)
+
+print(taxonomy_data)
+```
+
+```{r}
+
+setwd("/Users/pchhyun/Documents/legionella/")
+data <- read.table("t_data.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+```
+
+
+```{r}
+long_data_t <- data %>%
+  pivot_longer(
+    cols = (Phylum:Species),
+    names_to = "taxonomyLevel",
+    values_to = "taxon"
+  ) 
+# Print the new taxonomy table
+print(long_data_t)
+
+```
+
+
+```{r}
+common_column <- "subject" 
+long_data_t <- select(long_data_t, -common_column)
+
+cc <- "c"
+long_data_c <- select(long_data_c, -cc)
+
+merged_table <- cbind(long_data_c,long_data_t)
+print(merged_table)
+
+write.table(merged_table, file = "merged_table.tsv", sep = "\t", quote = FALSE, row.names = FALSE)
+
+```
+
+
+```{r}
+
+data <- read.table("merged_table.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+result <- data %>%
+  select(-subject) %>%
+  distinct(taxon, .keep_all = TRUE)
+
+print(result)
+
+write.table(result, file = "final_merged_table.tsv", sep = "\t", quote = FALSE, row.names = FALSE)
+
+```
+
+

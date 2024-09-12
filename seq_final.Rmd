@@ -1,0 +1,543 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+```{r}
+library(tidyverse)
+library(dplyr)
+```
+
+
+```{r}
+# add column for sequence number in csv(mergedwseq.tsv)
+
+setwd("/Users/pchhyun/Documents/legionella/")
+
+# Read the first TSV file
+seq_table <- read.table("mergedwsequ.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+# Read the second TSV file
+one_table <- read.table("fasta_table.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+# Merge the two tables based on the "Sequence" column
+#seq_table <- merge(seq_table, one_table, by = "Sequence", all.x = FALSE)
+
+seq_table <- inner_join(seq_table, one_table, by = "Sequence")
+
+# Extract numeric part from "Seq" and convert to numeric
+seq_table$seq_numeric <- as.numeric(gsub("Seq", "", seq_table$query))
+
+# Order the merged table by the numeric value of "Seq#"
+seq_table <- seq_table[order(seq_table$seq_numeric), ]
+
+# Remove the temporary numeric column
+seq_table <- seq_table[, !names(seq_table) %in% "seq_numeric"]
+
+# Reorder the columns
+seq_table <- seq_table[, c("query", names(seq_table)[-1])]
+
+#remove last col
+seq_table <- seq_table[, -ncol(seq_table)]
+
+
+# Print the ordered merged table
+print(seq_table)
+
+
+# Write the merged table to a new TSV file
+write.table(seq_table, file = "csvwseq.tsv", sep = "\t", row.names = FALSE)
+
+```
+```{r}
+# get rid of taxonomy from csv table
+setwd("/Users/pchhyun/Documents/legionella/")
+
+tsv_data <- read.table("csvwseq.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+data <- subset(tsv_data, select = -c(Kingdom, Phylum, Class, Order, Family, Genus, Species))
+
+# rename query to Seq
+data <- data %>%
+  rename(Seq = query)
+
+# Replace ".fastq_F_filt.fastq.gz" from column names
+colnames(data)[-1] <- gsub("\\.1.fastq_F_filt\\.fastq\\.gz","", colnames(data)[-1])
+
+# Print the pivoted table
+print(data)
+
+# Write the merged table to a new TSV file
+write.table(data, file = "csvwseqwotax.tsv", sep = "\t", row.names = FALSE)
+
+```
+```{r}
+#pivot table
+setwd("/Users/pchhyun/Documents/legionella/")
+
+data <- read.table("csvwseqwotax.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+new_df <- pivot_longer(data, 
+                        cols = (X1_11F0_4_GCATGCCAGT:X1_B3_TTGCACTCAG),
+                        names_to = "sample", 
+                        values_to = "count")
+# Print the pivoted table
+print(new_df)
+
+# Write the merged table to a new TSV file
+write.table(new_df, file = "pivoted.tsv", sep = "\t", row.names = FALSE)
+
+```
+
+
+```{r}
+# merge taxonomy and pivoted
+
+setwd("/Users/pchhyun/Documents/legionella/")
+
+# Read the mergedwseq table
+pivoted_table <-  read.table("pivoted.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+# Read the seq_table
+taxonomy_table <- read.table("taxonomy_data1.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+# Merge the two tables based on the "Sequence" column
+#merged_table <- merge(merged_table, seq_table, by = "Seq", all = TRUE)
+
+merged_table <- full_join(pivoted_table, taxonomy_table, by = "Seq")
+#seq_table <- merge(merged_table, fasta_table, by = "Sequence", all = FALSE)
+
+# Print the merged data
+print(merged_table)
+
+# Write the data to a TSV file
+write.table(merged_table, file = "pp.tsv", sep = "\t", row.names = FALSE)
+
+#X1_2M3_GAGATTGCTA is not in pp ?? fix NA 
+```
+```{r}
+# fixing columns in metadata 
+
+setwd("/Users/pchhyun/Documents/legionella/")
+
+# Read the mergedwseq table
+data <-  read.table("metadata.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+# combine columms 
+data$sample <- paste(data$sample.id, data$barcode.sequence, sep = "_")
+
+# add X
+data$sample <- paste0("X", data$sample)
+
+# get rid of sample.id and barcode.sequence column
+data <- subset(data, select = -c(sample.id, barcode.sequence))
+
+# Print the combined result
+print(data)
+
+# Write the data to a TSV file
+write.table(data, file = "mergedmetadata.tsv", sep = "\t", row.names = FALSE)
+
+```
+```{r}
+# anoyomize site names 
+
+setwd("/Users/pchhyun/Documents/legionella/")
+
+# Import ASVs taxonomy data
+file1 <- read_tsv("mergedmetadata.tsv")
+
+# Import blast output data
+file2 <- read_tsv("PLPS.tsv")
+
+# Join the files based on their taxonomic identifier # left or right join? 
+joined_data <- left_join(file1, file2, by = "site")
+
+names(joined_data )[names(joined_data ) == "Sample Name"] <- "site_code"
+print(joined_data )
+
+
+# Write the data to a TSV file
+write.table(joined_data, file = "mergedmetadata11.tsv", sep = "\t", row.names = FALSE)
+```
+
+
+```{r}
+# combine mergedmetadata and pp "sample"
+
+setwd("/Users/pchhyun/Documents/legionella/")
+
+# Read the mergedmetadata table
+mergedmetadata <- read.table("mergedmetadata11.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+# Read the pp table
+pp <- read.table("pp.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+
+merged_table <-inner_join(mergedmetadata, pp, by = "sample")
+ 
+# Print the merged data
+print(merged_table)
+
+# Write the data to a TSV file
+write.table(merged_table, file = "mergedsamplepp.tsv", sep = "\t", row.names = FALSE)
+```
+```{r}
+# Read the data from the file
+setwd("/Users/pchhyun/Documents/legionella/")
+data <- read.table("mergedsamplepp.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+# Select only the columns
+data <- data[, c("sample", "sample_no", "site_no", "site_code", "sample_type", "filter", "Seq", "count", "Species")]
+
+# Print the updated data
+print(data)
+
+# Write the data to a new TSV file
+write.table(data, file = "mergedsampleppspecies.tsv", sep = "\t", row.names = FALSE)
+```
+```{r}
+# Read the data from the file
+setwd("/Users/pchhyun/Documents/legionella/")
+data <- read.table("mergedsampleppspecies.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+# Get unique sample names
+unique_samples <- unique(data$sample)
+ 
+# Generate new simplified names
+new_names <- paste0("A", sprintf("%02d", seq_along(unique_samples)))
+
+# Create a named vector for mapping old names to new names
+name_map <- setNames(new_names, unique_samples)
+
+# Replace old sample names with new ones in the data frame
+data$sample <- name_map[data$sample]
+
+# Replace flush as f and first draw as fd
+data$sample_type <- gsub("flush", "f", data$sample_type)
+data$sample_type <- gsub("first_draw", "fd", data$sample_type)
+
+# combine columms to make new sample name 
+data$sample_name <- paste( data$sample_type, data$filter, sep = "_")
+
+# Filter out rows; exclude "control"
+data <- data %>%
+  filter( sample_type != "control")
+
+# Print the updated data
+print(data)
+
+# Write the data to a new TSV file
+write.table(data, file = "mergedsampleppspecies1.tsv", sep = "\t", row.names = FALSE)
+```
+```{r}
+# For L. stutzeri, could you remove the "ATCC...
+# change NA species as unknown 
+
+# Set the working directory
+setwd("/Users/pchhyun/Documents/legionella/")
+
+# Read the data from the file
+data <- read.table("mergedsampleppspecies1.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+# Replace "Stutzerimonas stutzeri ATCC 17588 = LMG 11199" with "Stutzerimonas stutzeri" in the Species column
+data$Species <- gsub("Stutzerimonas stutzeri ATCC 17588 = LMG 11199", "Stutzerimonas stutzeri", data$Species)
+
+
+# Check for NA values and change them to unknown
+data$Species[is.na(data$Species)] <- "Unknown"
+
+print(data)
+
+# Write the modified data back to a file
+write.table(data, file = "mergedsampleppspecies1.tsv", sep = "\t", row.names = FALSE)
+
+```
+
+```{r}
+# order "other" as last"
+ custom_palette <- c("#9A745F", "#BBD9E1", "#4DAF4A", "#984EA3", "#B57E79", "#FFFF33", "#A65628", "#F781BF", "#999999", "#66C2A5", "#FC8D62", "#8DA0CB", "#E78AC3", "#A6D854", "#FFD92F", "#D38062", "#B3B3B3", "#8DD3C7", "#BEBADA", "#FB8072", "#80B1D3", "#D4A373", "#B3DE69", "#FCCDE5", "#CCEBC5", "#FFED6F", "#1F78B4", "#33A02C", "#FB9A99", "#5C7070", "#FDBF6F", "#FF7F00", "#CAB2D6", "#F2BA81", "#FFE4E1", "#E3D8C4", "#BFC3DC")
+```
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(ggthemes)
+library(forcats)
+
+# Set working directory and read data (ensure the path and file name are correct)
+setwd("/Users/pchhyun/Documents/legionella/")
+data <- read.table("mergedsampleppspecies1.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+# Create an ordering column for sample_name
+data <- data %>%
+  mutate(sample_name = paste(sample_type, filter, sep = "_")) %>%
+  mutate(order = case_when(
+    sample_name == "fd_3" ~ 1,
+    sample_name == "fd_0.4" ~ 2,
+    sample_name == "f_3" ~ 3,
+    sample_name == "f_0.4" ~ 4,
+    TRUE ~ 5  # default value to catch any other cases
+  ))
+
+# Reorder sample_name by the new order column
+data <- data %>%
+  arrange(order, sample_name) %>%
+  mutate(sample_name = factor(sample_name, levels = unique(sample_name)))
+
+# Calculate total count for each Species
+species_abundance <- data %>%
+  group_by(Species) %>%
+  summarize(total_count = sum(count)) %>%
+  arrange(desc(total_count)) %>%
+  filter(!Species %in% c("Legionella < x", "Other", "Unknown"))
+
+# Define species levels in order of abundance, and then Legionella < x, Other, Unknown
+species_levels <- c(as.character(species_abundance$Species), "Legionella < x", "Other", "Unknown")
+
+# 
+data <- data %>%
+  mutate(
+    percentage = ifelse(count < 1000, sum(count) / sum(count) * 100, count / sum(count) * 100),
+    Species = ifelse(count < 1000 & grepl("Legionella", Species), "Legionella < x", 
+                     ifelse(count < 1000, "Other", as.character(Species))),
+    Species = fct_explicit_na(Species, na_level = "Unknown")
+  ) %>%
+  mutate(Species = factor(Species, levels = species_levels))
+
+# Reorder Species levels alphabetically for the legend
+species_levels_alpha <- c(sort(as.character(species_abundance$Species)), "Legionella < x", "Other", "Unknown")
+data <- data %>%
+  mutate(Species = factor(Species, levels = species_levels_alpha))
+
+# Plotting
+data %>%
+  ggplot(aes(x = sample_name, y = count)) +
+  geom_bar(aes(fill = Species), stat = "identity", position = "fill") +
+  facet_grid(~site_code, scales = "free_x", space = "free_x") +
+  labs(x = "Sample", y = "Relative Abundance (%) ", fill = "Species") +
+  theme(axis.text.x = element_text(angle = 65, hjust = 1, size = 7)) +
+  scale_fill_tableau(palette = "Tableau 20") +  # Use Tableau 20 palette
+  scale_y_continuous(labels = scales::percent_format()) +
+  ggtitle("Species Abundance (site_code)")
+```
+```{r}
+# Set working directory and read data (ensure the path and file name are correct)
+setwd("/Users/pchhyun/Documents/legionella/")
+data <- read.table("mergedsampleppspecies1.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+# Create an ordering column for sample_name
+data <- data %>%
+  mutate(sample_name = paste(sample_type, filter, sep = "_")) %>%
+  mutate(order = case_when(
+    sample_name == "fd_3" ~ 1,
+    sample_name == "fd_0.4" ~ 2,
+    sample_name == "f_3" ~ 3,
+    sample_name == "f_0.4" ~ 4,
+    TRUE ~ 5  # default value to catch any other cases
+  ))
+
+# Reorder sample_name by the new order column
+data <- data %>%
+  arrange(order, sample_name) %>%
+  mutate(sample_name = factor(sample_name, levels = unique(sample_name)))
+
+# Calculate total count for each Species
+species_abundance <- data %>%
+  group_by(Species) %>%
+  summarize(total_count = sum(count)) %>%
+  arrange(desc(total_count)) %>%
+  filter(!Species %in% c("Legionella < x", "Other", "Unknown"))
+
+# Define species levels in order of abundance, and then Legionella < x, Other, Unknown
+species_levels <- c(as.character(species_abundance$Species), "Legionella < x", "Other", "Unknown")
+
+# List of Pseudomonas and Stutzerimonas species to group into "Other"
+non_legionella_species <- c("Luteimonas chenhongjianii", "Pseudomonas fluvialis", "Pseudomonas oryzihabitans", "Pseudomonas rhizoryzae", 
+                            "Pseudomonas ullengensis", "Stutzerimonas stutzeri")
+
+# Modify data to group specified non-Legionella species into "Other" category
+data <- data %>%
+  mutate(
+    percentage = ifelse(count < 1000, sum(count) / sum(count) * 100, count / sum(count) * 100),
+    Species = ifelse(Species %in% non_legionella_species, "Other",
+                     ifelse(count < 1000 & grepl("Legionella", Species), "Legionella < x", 
+                            ifelse(count < 1000, "Other", as.character(Species)))),
+    Species = fct_explicit_na(Species, na_level = "Unknown")
+  ) %>%
+  mutate(Species = factor(Species, levels = species_levels))
+
+# Reorder Species levels alphabetically for the legend
+species_levels_alpha <- c(sort(as.character(species_abundance$Species)), "Legionella < x", "Other", "Unknown")
+data <- data %>%
+  mutate(Species = factor(Species, levels = species_levels_alpha))
+
+# Plotting
+data %>%
+  ggplot(aes(x = sample_name, y = count)) +
+  geom_bar(aes(fill = Species), stat = "identity", position = "fill") +
+  facet_grid(~site_code, scales = "free_x", space = "free_x") +
+  labs(x = "Sample", y = "Relative Abundance (%)", fill = "Species") +
+  theme(axis.text.x = element_text(angle = 65, hjust = 1, size = 7)) +
+  scale_fill_tableau(palette = "Tableau 20") +  # Use Tableau 20 palette
+  scale_y_continuous(labels = scales::percent_format()) +
+  ggtitle("Species Abundance (site_code)")
+
+```
+
+
+
+
+
+
+```{r}
+# final bar plot?? 
+
+# Load necessary libraries
+library(dplyr)
+library(ggplot2)
+library(ggthemes)
+library(forcats)
+
+# Set working directory and read data (ensure the path and file name are correct)
+setwd("/Users/pchhyun/Documents/legionella/")
+data <- read.table("mergedsampleppspecies1.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+print(sum(data$count))
+
+# Create an ordering column for sample_name by combining sample_type and filter
+data <- data %>%
+  mutate(sample_name = paste(sample_type, filter, sep = "_")) %>%
+  mutate(order = case_when(
+    sample_name == "fd_3" ~ 1,
+    sample_name == "fd_0.4" ~ 2,
+    sample_name == "f_3" ~ 3,
+    sample_name == "f_0.4" ~ 4,
+    TRUE ~ 5  # default value to catch any other cases
+  ))
+
+# Reorder sample_name by the new order column
+data <- data %>%
+  arrange(order, sample_name) %>%
+  mutate(sample_name = factor(sample_name, levels = unique(sample_name)))
+
+# Calculate total count for each Species and filter out specific categories
+species_abundance <- data %>%
+  group_by(Species) %>%
+  summarize(total_count = sum(count)) %>%
+  arrange(desc(total_count)) %>%
+  filter(!Species %in% c("Legionella < x", "Other", "Unknown"))
+
+# Define species levels in order of abundance, including specific categories
+species_levels <- c(as.character(species_abundance$Species), "Legionella < x", "Other", "Unknown")
+
+# Adjust the data for plotting
+data <- data %>%
+  mutate(
+    # Reclassify Species based on whether it contains "Legionella" or not, and count
+    Species = ifelse(grepl("Legionella", Species), 
+                   ifelse(count < 200, "Legionella < x", as.character(Species)), 
+                    "Other"),
+    # Handle NA values for Species explicitly
+    Species = fct_explicit_na(Species, na_level = "Unknown")
+  ) %>%
+  
+  
+  # Convert Species to a factor with predefined levels
+  mutate(Species = factor(Species, levels = species_levels))
+
+# Reorder Species levels alphabetically for the legend
+species_levels_alpha <- c(sort(as.character(species_abundance$Species)), "Legionella < x", "Other", "Unknown")
+data <- data %>%
+  mutate(Species = factor(Species, levels = species_levels_alpha))
+
+# Plotting the data
+data %>%
+  ggplot(aes(x = sample_name, y = count)) +
+  geom_bar(aes(fill = Species), stat = "identity", position = "fill") +
+  facet_grid(~site_code, scales = "free_x", space = "free_x") +
+  labs(x = "Sample", y = "Relative Abundance", fill = "Species") +
+  theme(axis.text.x = element_text(angle = 65, hjust = 1, size = 7)) +
+  scale_fill_tableau(palette = "Tableau 20") +  # Use Tableau 20 palette
+  ggtitle("Species Abundance (site_code)")
+```
+
+```{r}
+
+## not final plot percentage ??
+library(dplyr)
+library(ggplot2)
+library(ggthemes)
+library(forcats)
+
+# Set working directory and read data (ensure the path and file name are correct)
+setwd("/Users/pchhyun/Documents/legionella/")
+data <- read.table("mergedsampleppspecies1.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+# Create an ordering column for sample_name
+data <- data %>%
+  mutate(sample_name = paste(sample_type, filter, sep = "_")) %>%
+  mutate(order = case_when(
+    sample_name == "fd_3" ~ 1,
+    sample_name == "fd_0.4" ~ 2,
+    sample_name == "f_3" ~ 3,
+    sample_name == "f_0.4" ~ 4,
+    TRUE ~ 5  # default value to catch any other cases
+  ))
+
+# Reorder sample_name by the new order column
+data <- data %>%
+  arrange(order, sample_name) %>%
+  mutate(sample_name = factor(sample_name, levels = unique(sample_name)))
+
+# Calculate total count and relative abundance for each Species
+data <- data %>%
+  group_by(sample_name, Species, site_code) %>%
+  summarize(count = sum(count)) %>%
+  ungroup() %>%
+  group_by(sample_name, site_code) %>%
+  mutate(total_count = sum(count),
+         relative_abundance = (count / total_count) * 100)
+
+# List of non-Legionella species to be moved to "Other"
+non_legionella_species <- c("Luteimonas chenhongjianii", 
+                            "Pseudomonas fluvialis", 
+                            "Pseudomonas oryzihabitans", 
+                            "Pseudomonas rhizoryzae", 
+                            "Pseudomonas ullengensis", 
+                            "Stutzerimonas stutzeri")
+
+# Apply the 1% relative abundance threshold and classify species
+data <- data %>%
+  mutate(Species = ifelse(relative_abundance < 1 & grepl("Legionella", Species), "Legionella < 1%", 
+                          ifelse(Species %in% non_legionella_species, "Other", 
+                                 ifelse(!grepl("Legionella", Species), "Other", as.character(Species)))),
+         Species = fct_explicit_na(Species, na_level = "Unknown"))
+
+# Define species levels for consistent ordering in the plot
+species_levels <- c("Legionella < 1%", "Other", unique(data$Species[grepl("Legionella", data$Species)]), "Unknown")
+data <- data %>%
+  mutate(Species = factor(Species, levels = species_levels))
+
+# Plotting
+data %>%
+  ggplot(aes(x = sample_name, y = relative_abundance, fill = Species)) +
+  geom_bar(stat = "identity", position = "fill") +
+  facet_grid(~site_code, scales = "free_x", space = "free_x") +
+  labs(x = "Sample", y = "Relative Abundance (%)", fill = "Species") +
+  theme(axis.text.x = element_text(angle = 65, hjust = 1, size = 7)) +
+  scale_fill_tableau(palette = "Tableau 20") +  # Use Tableau 20 palette
+  scale_y_continuous(labels = scales::percent_format()) +
+  ggtitle("Species Abundance (site_code)")
+
+
+```
+
+
+
+
+
