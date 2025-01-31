@@ -1,0 +1,74 @@
+# updated barplot
+# Set working directory and read data (ensure the path and file name are correct)
+setwd("/Users/pchhyun/Documents/legionella/")
+data <- read.table("mergedsampleppspecies1.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+# Create an ordering column for sample_name
+data <- data %>%
+  mutate(sample_name = paste(sample_type, filter, sep = "_")) %>%
+  mutate(order = case_when(
+    sample_name == "fd_3" ~ 1,
+    sample_name == "fd_0.4" ~ 2,
+    sample_name == "f_3" ~ 3,
+    sample_name == "f_0.4" ~ 4,
+    TRUE ~ 5  # default value to catch any other cases
+  )) %>%
+  mutate(sample_name = case_when(
+    grepl("_3", sample_name) ~ gsub("_3", "_PA", sample_name),
+    grepl("_0.4", sample_name) ~ gsub("_0.4", "_PL", sample_name),
+    TRUE ~ sample_name
+  ))  %>%
+  mutate(sample_name = case_when(
+    grepl("fd_", sample_name) ~ gsub("fd_", "FD_", sample_name),
+    grepl("f_", sample_name) ~ gsub("f_", "FL_", sample_name),
+    TRUE ~ sample_name
+  )) 
+
+# Reorder sample_name by the new order column
+data <- data %>%
+  arrange(order, sample_name) %>%
+  mutate(sample_name = factor(sample_name, levels = unique(sample_name)))
+
+# Calculate total count for each Species
+species_abundance <- data %>%
+  group_by(Species) %>%
+  summarize(total_count = sum(count)) %>%
+  arrange(desc(total_count)) %>%
+  filter(!Species %in% c("Legionella < x", "Other", "Unknown"))
+
+# Define species levels in order of abundance, and then Legionella < x, Other, Unknown
+species_levels <- c(as.character(species_abundance$Species), "Legionella < x", "Other", "Unknown")
+
+# List of Pseudomonas and Stutzerimonas species to group into "Other"
+non_legionella_species <- c("Luteimonas chenhongjianii", "Pseudomonas fluvialis", "Pseudomonas oryzihabitans", "Pseudomonas rhizoryzae", 
+                            "Pseudomonas ullengensis", "Stutzerimonas stutzeri")
+
+# Modify data to group specified non-Legionella species into "Other" category
+data <- data %>%
+  mutate(
+    percentage = ifelse(count < 1000, sum(count) / sum(count) * 100, count / sum(count) * 100),
+    Species = ifelse(Species %in% non_legionella_species, "Other",
+                     ifelse(count < 1000 & grepl("Legionella", Species), "Legionella < x", 
+                            ifelse(count < 1000, "Other", as.character(Species)))),
+    Species = fct_explicit_na(Species, na_level = "Unknown")
+  ) %>%
+  mutate(Species = factor(Species, levels = species_levels))
+
+# Reorder Species levels alphabetically for the legend
+species_levels_alpha <- c(sort(as.character(species_abundance$Species)), "Legionella < x", "Other", "Unknown")
+data <- data %>%
+  mutate(Species = factor(Species, levels = species_levels_alpha))
+
+# Plotting
+data %>%
+  ggplot(aes(x = sample_name, y = count)) +
+  geom_bar(aes(fill = Species), stat = "identity", position = "fill") +
+  facet_grid(~site_code, scales = "free_x", space = "free_x") +
+  labs(x = "Sample", y = "Relative Abundance (%)", fill = "Species") +
+  theme(
+    axis.text.x = element_text(angle = 65, hjust = 1, size = 7),
+    legend.text = element_text(face = "italic") # Italicize genus and species names in legend
+  ) +
+  scale_fill_tableau(palette = "Tableau 20") +  # Use Tableau 20 palette
+  scale_y_continuous(labels = scales::percent_format()) +
+  ggtitle("Species Abundance (site_code)")
