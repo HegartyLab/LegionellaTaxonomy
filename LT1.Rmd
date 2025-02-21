@@ -1,0 +1,246 @@
+---
+title: "LT1"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+library(tidyverse)
+library(dplyr)
+```
+
+```{r}
+setwd("/Users/pchhyun/Documents/LT/")
+
+data <- read.table("mergedwsequ.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+data <- data %>% select(-Kingdom, -Phylum, -Class, -Order, -Family, -Genus, -Species)
+
+# Write the new data table as a TSV file
+write.table(data, file = "mergedf.tsv", sep = "\t", quote = FALSE, row.names = FALSE)
+print(data)
+```
+```{r}
+# full join merged with taxonmy final data
+
+setwd("/Users/pchhyun/Documents/LT/")
+
+file1 <- read_tsv("mergedf.tsv")
+file2 <- read_tsv("taxonomy_final.tsv")
+
+# Join the files based on their taxonomic identifier
+merge <- full_join( file1, file2, by = "Sequence")
+
+
+# Export the joined file
+print(merge)
+write.table(merge, file = "mergedftax.tsv", sep = "\t", row.names = FALSE)
+```
+
+
+```{r}
+# add column for sequence number in csv(mergedwseq.tsv)
+
+setwd("/Users/pchhyun/Documents/LT/")
+
+# Read the first TSV file
+mergedwsequ <- read.table("mergedftax.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+# Read the second TSV file
+fasta_table <- read.table("fasta_table.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+# Merge by the "sequence" column
+merged_data <- full_join(fasta_table, mergedwsequ, by = "Sequence")
+
+# Print the ordered merged table
+print(merged_data)
+# Save the merged data
+write.table(merged_data, file = "mergedseq.tsv", sep = "\t", quote = FALSE, row.names = FALSE)
+
+```
+
+
+
+```{r}
+# get rid of . 
+setwd("/Users/pchhyun/Documents/LT/")
+# Read the first TSV file
+data <- read.table("mergedseq.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+# Clean up column names
+colnames(data) <- gsub("\\..*", "", colnames(data))
+
+print(data)
+write.table(data, file = "mergedseqf.tsv", sep = "\t", quote = FALSE, row.names = FALSE)
+
+```
+
+```{r}
+setwd("/Users/pchhyun/Documents/LT/")
+
+# Read the first TSV file
+csv_data <- read.table( "mergedseqf.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+metadata <- read.table( "mergedmetadataf.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+# Create a named vector for renaming: old sample names → new sample codes
+rename_map <- setNames(metadata$sample_code, metadata$sample)
+
+# Rename the columns in csv_data
+colnames(csv_data) <- ifelse(colnames(csv_data) %in% names(rename_map), rename_map[colnames(csv_data)], colnames(csv_data))
+  
+print(csv_data)
+write.table(csv_data, file = "compressed.tsv", sep = "\t", quote = FALSE, row.names = FALSE)
+
+```
+
+
+```{r}
+#pivot table -control
+setwd("/Users/pchhyun/Documents/LT/")
+
+# data <- read.table("tablewseqwotax.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+data <- read.table("compressed.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+new_df <- pivot_longer(data, 
+                        cols = (SC_5_FD_PL:SF_3_FL_PA),#exclude control NA_control_PA
+                        names_to = "sample", 
+                        values_to = "count")
+new_df <- new_df %>% select(-NA_control_PA)
+new_df <- new_df %>% rename(sample_code = sample)
+
+# Print the pivoted table
+print(new_df)
+
+
+# Write the merged table to a new TSV file
+write.table(new_df, file = "pivoted.tsv", sep = "\t", row.names = FALSE)
+```
+
+
+```{r}
+# fixing columns in metadata 
+
+setwd("/Users/pchhyun/Documents/LT/")
+
+# Read table
+data <-  read.table("metadata.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+# combine columms 
+data$sample <- paste(data$sample.id, data$barcode.sequence, sep = "_")
+
+# add X
+data$sample <- paste0("X", data$sample)
+
+# get rid of sample.id and barcode.sequence column
+data <- subset(data, select = -c(sample.id, barcode.sequence))
+
+# Print the combined result
+print(data)
+
+# Write the data to a TSV file
+write.table(data, file = "mergedmetadata.tsv", sep = "\t", row.names = FALSE)
+
+```
+
+```{r}
+# anonyomize site names 
+
+setwd("/Users/pchhyun/Documents/LT/")
+
+file1 <- read_tsv("mergedmetadata.tsv")
+file2 <- read_tsv("PLPS.tsv") # table with site code 
+ 
+# Join the files based on their taxonomic identifier
+joined_data <- left_join(file1, file2, by = "site")
+
+names(joined_data )[names(joined_data ) == "Sample Name"] <- "site_code"
+print(joined_data )
+
+# Write the data to a TSV file
+write.table(joined_data, file = "mergedmetadatacode.tsv", sep = "\t", row.names = FALSE)
+```
+```{r}
+#modify metadata samples naming scheme 
+
+setwd("/Users/pchhyun/Documents/LT/")
+
+metadata <- read.table("mergedmetadatacode.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+# Modify sample_type and filter values
+metadata <- metadata %>%
+  mutate(sample_type = recode(sample_type, "flush" = "FL", "first_draw" = "FD"),
+         filter = recode(filter, "3" = "PA", "0.4" = "PL"))%>%
+mutate(sample_code = paste(site_code, sample_type, filter, sep = "_"))  # Create sample_code column
+
+
+# Print the merged data
+print(metadata)
+
+# Write the data to a TSV file
+write.table(metadata, file = "mergedmetadataf.tsv", sep = "\t", row.names = FALSE)
+```
+
+```{r}
+# combine mergedmetadata and pivoted by "sample"
+
+setwd("/Users/pchhyun/Documents/LT/")
+
+# Read the mergedmetadata table
+mergedmetadata <- read.table("mergedmetadataf.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+ 
+# Read the pp table
+pp <- read.table("pivoted.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+merged_table1 <-inner_join(mergedmetadata, pp, by = "sample_code")
+ 
+# Print the merged data
+print(merged_table1)
+
+# Write the data to a TSV file
+write.table(merged_table1, file = "mergedsamplep.tsv", sep = "\t", row.names = FALSE)
+```
+
+```{r}
+# Read the data from the file
+setwd("/Users/pchhyun/Documents/LT/")
+data <- read.table("mergedsamplep.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+# Select only the columns
+data <- data[, c("sample", "sample_no", "site_no", "site_code", "sample_type", "filter", "Sequence", "count", "Species")]
+
+# Print the updated data
+print(data)
+
+# Write the data to a new TSV file
+write.table(data, file = "mergedsamplepspecies.tsv", sep = "\t", row.names = FALSE)
+```
+
+```{r}
+# For L. stutzeri, could you remove the "ATCC...
+# change NA species as unknown 
+
+# Set the working directory
+setwd("/Users/pchhyun/Documents/LT/")
+
+# Read the data from the file
+data <- read.table("mergedsamplepspecies.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+# Replace "Stutzerimonas stutzeri ATCC 17588 = LMG 11199" with "Stutzerimonas stutzeri" in the Species column
+data$Species <- gsub("Stutzerimonas stutzeri ATCC 17588 = LMG 11199", "Stutzerimonas stutzeri", data$Species)
+
+# Check for NA values and change them to unknown
+data$Species[is.na(data$Species)] <- "Unknown"
+
+print(data)
+
+# Write the modified data back to a file
+write.table(data, file = "mergedsampleppspeciesn.tsv", sep = "\t", row.names = FALSE)
+
+```
+
+
+
+

@@ -1,0 +1,148 @@
+---
+title: "LT0"
+output: html_notebook
+---
+```{r}
+library(tidyverse)
+library(dplyr)
+```
+
+```{r}
+# full join blast result and fasta 
+
+setwd("/Users/pchhyun/Documents/LT/")
+file1 <- read_tsv("asv16S.tsv")
+
+# Import blast output data
+file2 <- read_tsv("fasta_table.tsv")
+
+# Join the files based on their taxonomic identifier
+asv16S1 <- full_join( file1, file2, by = "query")
+
+# Export the joined file
+write_tsv(asv16S1, "/Users/pchhyun/Documents/legionella/joined_data.tsv")
+print(asv16S1)
+
+# Write the data to a TSV file
+write.table(asv16S1, file = "blastfasta.tsv", sep = "\t", row.names = FALSE)
+
+```
+```{r}
+# Join blast+fasta table with uniqmatches table
+
+setwd("/Users/pchhyun/Documents/LT/")
+
+asv_taxonomy <- read_tsv("blastfasta.tsv")
+blast_output <- read_tsv("uniqmatches1.tsv")
+
+# Join the files based on their taxonomic identifier 
+joined_data <- full_join(asv_taxonomy, blast_output, by = "subject")
+
+# Export the joined file
+write.table(joined_data, file = "joined_data.tsv", sep = "\t", row.names = FALSE)
+print(joined_data)
+```
+```{r}
+#seperate taxonomy columns 
+
+setwd("/Users/pchhyun/Documents/LT/")
+
+joined_data <- read.table("joined_data.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+# how many unique definitions 
+unique_definitions <- unique(joined_data$definition)
+num_unique_definitions <- length(unique_definitions)
+cat("Number of unique definitions:", num_unique_definitions, "\n")
+
+# split taxonomy column into multiple columns
+taxonomy_split <- strsplit(joined_data$taxonomy, ";\\s*", perl = TRUE)
+max_splits <- max(sapply(taxonomy_split, length))
+taxonomy_df <- as.data.frame(do.call(rbind, lapply(taxonomy_split, function(x) c(x, rep(NA, max_splits - length(x))))))
+
+colnames(taxonomy_df) <- c("Domain", "Phylum", "Class", "Order", "Family", "Genus", "Species")
+
+# Extract species information from the taxonomy column
+joined_data$Species <- sub("^(.*?) Bacteria.*$", "\\1", joined_data$taxonomy)
+
+# combine the new taxonomy columns with the original data
+processed_data <- cbind(joined_data, taxonomy_df)
+
+# substitute everything except "Bacteria" with an empty string in Domain column
+processed_data$Domain <- gsub(".*Bacteria.*", "Bacteria", processed_data$Domain)
+processed_data <- processed_data[, -ncol(processed_data)]
+processed_data <- processed_data %>%
+  select(-Species) %>%
+  mutate(Species = joined_data$Species)
+
+# print the processed_data and write it to a new TSV file
+print(processed_data)
+write.table(processed_data, file = "processed_data.tsv", sep = "\t", row.names = FALSE)
+
+```
+
+
+```{r}
+# modify processed data based on percent identity 
+# Genus- percent identity greater than 93% - keep; Species- greater than 97%;
+
+setwd("/Users/pchhyun/Documents/LT/")
+data <- read.table("processed_data.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+# Function to modify Genus and Species based on percent.identity
+modify_taxonomy <- function(data) {
+  for (i in seq_len(nrow(data))) {
+    if (!is.na(data[i, "percent.identity"])) {
+      if (as.numeric(data[i, "percent.identity"]) < 93) {
+        # Change Genus to "NA"
+        data[i, "Genus"] <- "NA"
+      }
+      if (as.numeric(data[i, "percent.identity"]) < 97) {
+        # Change Species to "NA"
+        data[i, "Species"] <- "NA"
+      }
+    }
+  }
+  return(data)
+}
+
+# Apply the modification to Genus and Species columns
+modified_data <- modify_taxonomy(data)
+
+# Print the modified data
+print(modified_data)
+
+# Write the modified data back to a new file
+write.table(modified_data, "processed_data_pi.tsv", sep = "\t", quote = FALSE, row.names = FALSE)
+```
+```{r}
+#clean processed data 
+
+setwd("/Users/pchhyun/Documents/LT/")
+
+data <- read.table("processed_data_pi.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+data <- data %>% select(-definition, -taxonomy)
+                
+
+# Write the new data table as a TSV file
+write.table(data, file = "processed_final.tsv", sep = "\t", quote = FALSE, row.names = FALSE)
+print(data)
+
+
+```
+```{r}
+#only taxonomy data
+
+setwd("/Users/pchhyun/Documents/LT/")
+
+data <- read.table("processed_final.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+data <- data %>% select(Sequence, Domain, Phylum, Class, Order, Family,Genus,Species)
+                
+
+# Write the new data table as a TSV file
+write.table(data, file = "taxonomy_final.tsv", sep = "\t", quote = FALSE, row.names = FALSE)
+print(data)
+
+```
+
