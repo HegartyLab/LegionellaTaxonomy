@@ -1,0 +1,343 @@
+---
+title: "argobloom genus "
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+```{r}
+install.packages("ade4", dependencies = TRUE)
+```
+
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(dplyr) 
+library(ggplot2) 
+library(ggthemes) 
+library(forcats)  
+library(RColorBrewer) 
+library(tidyr)
+library(tidyverse)
+library(ade4)
+library(seqinr)
+```
+
+
+
+```{r}
+
+setwd("/Users/pchhyun/Documents/ag/")
+
+# Read the TSV file and import data 
+otu_table <- read_tsv("OTUtable.tsv")
+taxa_table <- read_tsv("OTUtaxa.tsv")
+metadata <- read_tsv("metadata.tsv")
+
+# clean charts / data
+#OTU Table 
+#Rename the first column (contains Sample IDs) to "SampleID"
+colnames(otu_table)[1] <- "SampleID"
+
+# Rename the first column of the metadata table
+colnames(metadata)[1] <- "MetaIndex"
+
+```
+
+```{r}
+
+# Transform OTU Table to Long Format and Calculate Relative Abundance
+
+# Pivot the OTU table to long format (SampleID, taxa_list, Count)
+otu_long <- otu_table %>%
+  # Pivot all columns EXCEPT SampleID
+  pivot_longer(
+    cols = -SampleID,
+    names_to = "taxa_list",
+    values_to = "Count"
+  )
+
+
+# Calculate the total count per SampleID
+sample_totals <- otu_long %>%
+  group_by(SampleID) %>%
+  summarise(TotalCount = sum(Count))
+
+# Join totals back to the long table and calculate Relative Abundance
+rel_abundance_long <- otu_long %>%
+  left_join(sample_totals, by = "SampleID") %>%
+  mutate(RelativeAbundance = Count / TotalCount) %>%
+  select(-Count, -TotalCount) # Remove count data as we now have abundance??
+
+print (rel_abundance_long)
+
+```
+
+```{r}
+# Merge with Taxonomy Data
+
+# Join the relative abundance with the full taxonomy table
+abundance_with_taxa <- rel_abundance_long %>%
+  left_join(taxa_table, by = "taxa_list") %>%
+  # Replace NA Genus with 'Unclassified'
+  mutate(Genus = replace_na(Genus, "Unclassified"))
+
+#Taxonomic Agglomeration (Genus Level)
+
+# Group by SampleID and Genus, then sum the relative abundances
+Genus_abundance <- abundance_with_taxa %>%
+  group_by(SampleID, Genus) %>%
+  summarise(RelativeAbundance = sum(RelativeAbundance), .groups = 'drop')
+
+print (Genus_abundance)
+
+```
+
+```{r}
+# Clean Sample IDs and Merge with Metadata
+
+# Attempt to extract the short name (e.g., 'ALM', 'BCY') from the SampleID
+# Assuming the short name is the first three letters before the first hyphen
+Genus_abundance <- Genus_abundance %>%
+  mutate(name.short = sub("-.*", "", SampleID))
+
+# Now merge using the extracted name.short column
+# This requires the name.short column in the metadata to be accurate
+# We will use all columns from the metadata table
+Genus_grouped_data <- Genus_abundance %>%
+  left_join(metadata, by = "name.short")
+```
+
+```{r}
+#  Group Minor Taxa for Plotting 
+# Identify the top most abundant Genus globally
+
+top_n <- 19
+top_Genus <- Genus_grouped_data %>%
+  group_by(Genus) %>%
+  summarise(MeanAbundance = mean(RelativeAbundance)) %>%
+  arrange(desc(MeanAbundance)) %>%
+  slice_head(n = top_n) %>%
+  pull(Genus)
+
+# Create the final plotting column, grouping non-top Genus into 'Other'
+final_plot_data0 <- Genus_grouped_data %>%
+  mutate(Genus_Grouped = if_else(
+    Genus %in% top_Genus,
+    Genus,
+    "Other"
+  )) %>%
+  # Recalculate the abundance based on the grouped Genus
+  group_by(SampleID, name.short, Genus_Grouped, full.name) %>%
+  summarise(RelativeAbundance = sum(RelativeAbundance), .groups = 'drop') %>%
+  # Select the essential columns for the chart
+  select(SampleID, name.short, full.name, Genus_Grouped, RelativeAbundance)
+
+# 1. FILTER: Remove samples containing 'FB' (Filter Blanks)
+final_plot_data0 <- final_plot_data0 %>% 
+  filter(!grepl("FB", SampleID)) # Use 'grepl' to match 'FB' anywhere in the SampleID
+
+print(final_plot_data0)
+write.csv(final_plot_data0, "relative_abundance_table.csv", row.names = FALSE)
+
+```
+```{r}
+##N 어쩌고 이거 넣어 ㅂ말아ㅓ
+# We use final_plot_data0 as the starting point, as defined in the previous chunk.
+
+# 1. DEDUPLICATION: Identify and keep only the newer sample versions (-N)
+# a. Identify the base samples (without -N suffix)
+base_samples <- final_plot_data0$SampleID[!grepl("-N$", final_plot_data0$SampleID)]
+
+# b. Identify samples that have a newer -N version (e.g., 'GLM-5-24-N')
+samples_with_N <- final_plot_data0$SampleID[grepl("-N$", final_plot_data0$SampleID)]
+
+# c. Find the base names for N samples (e.g., 'GLM-5-24')
+base_n_samples <- sub("-N$", "", samples_with_N)
+
+# d. Define the final list of samples to EXCLUDE (the older, non-N versions that have a newer counterpart)
+old_samples_to_remove <- base_samples[base_samples %in% base_n_samples]
+
+# e. Filter the main table to keep only the latest versions
+final_plot_data0 <- final_plot_data0 %>%
+  filter(!(SampleID %in% old_samples_to_remove))
+
+print (final_plot_data0)
+```
+
+```{r}
+
+# We use final_plot_data0 as the starting point, as defined in the previous chunk.
+
+# 1. DEDUPLICATION: Identify and keep only the newer sample versions (-N)
+# a. Identify the base samples (without -N suffix)
+base_samples <- final_plot_data0$SampleID[!grepl("-N$", final_plot_data0$SampleID)]
+
+# b. Identify samples that have a newer -N version (e.g., 'GLM-5-24-N')
+samples_with_N <- final_plot_data0$SampleID[grepl("-N$", final_plot_data0$SampleID)]
+
+# c. Find the base names for N samples (e.g., 'GLM-5-24')
+base_n_samples <- sub("-N$", "", samples_with_N)
+
+# d. Define the final list of samples to EXCLUDE (the older, non-N versions that have a newer counterpart)
+old_samples_to_remove <- base_samples[base_samples %in% base_n_samples]
+
+# e. Filter the main table to keep only the latest versions
+final_plot_data <- final_plot_data0 %>%
+  filter(!(SampleID %in% old_samples_to_remove))
+
+# --- 7.5. Extract Month and Prepare Labels (NEW CHUNK) ---
+# This step creates the MonthName column needed for the final X-axis labels and chronological sorting.
+
+# 1. Extract Month Number and Map to Month Name
+final_plot_data <- final_plot_data0 %>% 
+  mutate(
+    # Regex: Extracts the digit(s) between the first and second hyphen (e.g., '3' from 'ALM-3-24')
+     MonthNumber = as.numeric(stringr::str_split_i(SampleID, pattern = "-", i = 2)),
+     
+    # Map numbers to chronological month names
+    MonthName = case_when(
+      MonthNumber == 1 ~ "January",
+      MonthNumber == 2 ~ "Feb",
+      MonthNumber == 3 ~ "March",
+      MonthNumber == 4 ~ "April",
+      MonthNumber == 5 ~ "May",
+      MonthNumber == 6 ~ "June",
+      MonthNumber == 7 ~ "July",
+      MonthNumber == 8 ~ "August",
+      MonthNumber == 9 ~ "September",
+      MonthNumber == 10 ~ "October",
+      MonthNumber == 11 ~ "November",
+      MonthNumber == 12 ~ "December",
+      TRUE ~ paste("Month", as.character(MonthNumber)) # Fallback for unrecognized months
+    )
+  )
+
+#Define Custom Chronological Order for Month Names
+month_order <- c("January", "Feb", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")
+# Filter the list to only include months present in your data for cleaner factor levels
+month_order <- month_order[month_order %in% unique(final_plot_data$MonthName)]
+
+
+# 3. Apply Final Ordering and Factor Levels
+final_plot_data <- final_plot_data %>%
+    # Sort data frame: Arrange by site, then chronologically by month, then by SampleID
+    arrange(name.short, factor(MonthName, levels = month_order), SampleID) %>%
+    mutate(
+        # Set SampleID as factor based on the new custom sorted order (for X-axis positioning)
+        SampleID = factor(SampleID, levels = unique(SampleID)),
+        # Set chronological factor levels for MonthName
+        MonthName = factor(MonthName, levels = month_order)
+    )
+
+print("--- Preview of Data with New MonthName Column ---")
+print(final_plot_data)
+write.csv(final_plot_data, "relative_abundance_table_filtered.csv", row.names = FALSE)
+
+```
+
+```{r}
+
+# Create the lookup table: Map SampleID (for position) to MonthName (for label)
+sample_labels <- final_plot_data %>%
+    select(SampleID, MonthName) %>%
+    distinct() %>%
+    pull(MonthName, name = SampleID) 
+
+# 1. Determine the order of groups for the plot (based on total abundance)
+# We recalculate this here to ensure factors are correctly set for the legend order.
+Genus_abundance_order <- final_plot_data %>%
+  group_by(Genus_Grouped) %>%
+  summarise(TotalAbundance = sum(RelativeAbundance), .groups = 'drop') %>%
+  arrange(desc(TotalAbundance)) %>%
+  pull(Genus_Grouped)
+Genus_abundance_order <- c(Genus_abundance_order[Genus_abundance_order != "Other"], "Other") 
+
+final_plot_data$Genus_Grouped <- factor(final_plot_data$Genus_Grouped, levels = Genus_abundance_order)
+
+# Ensure 'Other' is at the bottom of the stack
+final_plot_data$Genus_Grouped <- forcats::fct_relevel(final_plot_data$Genus_Grouped, "Other", after = Inf)
+
+
+# --- Generate the Plot ---
+final_abundance_plot <- final_plot_data %>%
+  ggplot(aes(x = MonthName, y = RelativeAbundance)) +
+  
+  # 1. Geometry: Stacked bar chart, using position="fill" for percentages
+  geom_bar(aes(fill = Genus_Grouped), stat = "identity", position = "fill") +
+  
+  # 2. Faceting: Group samples by site code
+  facet_grid(~name.short, scales = "free_x", space = "free_x") +
+  
+  # 3. Aesthetics and Scales
+  labs(
+    title = "Genus Relative Abundance by Site Code",
+    x = "Sample", 
+    y = "Relative Abundance (%)", 
+    fill = "Genus"
+  ) +
+  
+  # Use Tableau 20 palette as requested (Tableau 20 is excellent for diverse taxa)
+  scale_fill_tableau(palette = "Tableau 20") + 
+  
+  # Format Y-axis labels as percentages
+  scale_y_continuous(labels = scales::percent_format()) +
+  
+  # 4. Custom Theme Adjustments
+  theme_bw() + # Starting with a clean theme
+  theme(
+    # Rotate X-axis text for readability on dense plots
+    axis.text.x = element_text(angle = 65, hjust = 1, vjust = 1, size = 7),
+    # Remove redundant X-axis title
+    axis.title.x = element_blank(),
+    # Bold facet labels
+    strip.text.x = element_text(face = "bold", size = 8),
+    # Center the plot title
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    # Reduce spacing between facets
+    panel.spacing = unit(0.1, "lines"),
+    # Customize legend appearance
+    legend.title = element_text(face = "bold")
+  )
+
+# Display the final plot
+print(final_abundance_plot)
+
+# Save the plot
+ggsave("final_genus_relative_abundance_chart.png", final_abundance_plot, width = 14, height = 7, dpi = 300)
+
+```
+
+```{r}
+# create fasta table 
+
+setwd("/Users/pchhyun/Documents/ag/")
+
+# Read table
+otu <- read.table("OTUtaxa.tsv", header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+
+# Extract just the first column (the sequences)
+sequences <- otu$taxa_list 
+
+# If you want to limit to the first 17270 sequences:
+#sequences <- sequences[1:17270]
+
+# Generate FASTA headers
+headers <- paste0(">SEQ", seq_along(sequences))
+
+# Interleave headers and sequences
+fasta <- as.vector(rbind(headers, sequences))
+
+# Write to file
+writeLines(fasta, "otus_only_sequences.fasta")
+
+```
+
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
